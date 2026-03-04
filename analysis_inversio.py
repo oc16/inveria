@@ -279,6 +279,10 @@ def compute_breakeven_rent(
 # Risc i conclusió
 # -----------------------------
 
+from typing import Tuple, List, Optional
+import math
+
+
 def risk_assessment(
     monthly_cashflow: float,
     dscr: float,
@@ -286,67 +290,140 @@ def risk_assessment(
     sensitivity_cashflow_after_shocks: Optional[List[float]] = None
 ) -> Tuple[str, List[str]]:
     """
-    Classificació simple i explicable:
-    - DSCR < 1.0: alt (no cobreix deute)
-    - Cashflow mensual negatiu: alt (o mínim, si és lleu)
-    - LTV > 80%: incrementa risc
-    - Sensibilitat: si qualsevol shock dona cashflow negatiu -> puja risc
+    Classificació de risc (baix / mitjà / alt) amb explicació clara.
+
+    Què mira:
+    1) DSCR (cobertura del deute): si el NOI pot pagar la hipoteca amb marge.
+    2) Cashflow mensual: pressió de liquiditat (has d'afegir diners o no).
+    3) LTV (apalancament): sensibilitat a baixades de preu / refinançament.
+    4) Sensibilitat a shocks de tipus: què passa si puja el tipus (+1, +2 pp).
     """
+
     notes: List[str] = []
     score = 0
 
-    # DSCR
-    if dscr < 1.0:
-        score += 4
-        notes.append(f"DSCR {dscr:.2f} < 1.00: el NOI no cobreix el servei del deute.")
-    elif dscr < 1.2:
-        score += 2
-        notes.append(f"DSCR {dscr:.2f} és ajustat (<1.20): poc marge davant imprevistos.")
+    # -------------------------------------------------
+    # 1) DSCR: cobertura del deute
+    # -------------------------------------------------
+    if not math.isfinite(dscr):
+        notes.append("🟢 DSCR: ∞ (sense deute). No hi ha risc de cobertura d'hipoteca.")
+    elif dscr < 1.00:
+        score += 5
+        notes.append(
+            f"❌ DSCR {dscr:.2f}: el NOI NO cobreix la hipoteca (DSCR < 1.00). "
+            "Això implica que, fins i tot en condicions normals, falta caixa per pagar el deute."
+        )
+    elif dscr < 1.10:
+        score += 3
+        notes.append(
+            f"⚠️ DSCR {dscr:.2f}: cobertura molt justa (1.00–1.10). "
+            "Una mica de vacància, impagament o una despesa extra pot portar el cashflow a negatiu."
+        )
+    elif dscr < 1.25:
+        score += 1
+        notes.append(
+            f"🟡 DSCR {dscr:.2f}: correcte però amb marge limitat (1.10–1.25)."
+        )
     else:
-        notes.append(f"DSCR {dscr:.2f} és saludable (≥1.20).")
+        notes.append(
+            f"🟢 DSCR {dscr:.2f}: saludable (≥ 1.25). Hi ha marge per imprevistos."
+        )
 
-    # Cashflow
+    # -------------------------------------------------
+    # 2) Cashflow mensual: liquiditat
+    # -------------------------------------------------
     if monthly_cashflow < 0:
-        # Diferenciem si és lleu o fort
         if monthly_cashflow > -100:
             score += 2
-            notes.append(f"Cashflow mensual negatiu però lleu ({monthly_cashflow:.0f} €/mes).")
+            notes.append(
+                f"⚠️ Cashflow {monthly_cashflow:.0f} €/mes: negatiu però lleu. "
+                "Hauràs d'aportar una petita quantitat cada mes; qualsevol imprevist ho pot empitjorar."
+            )
         else:
-            score += 3
-            notes.append(f"Cashflow mensual negatiu ({monthly_cashflow:.0f} €/mes): tensió de liquiditat.")
+            score += 4
+            notes.append(
+                f"❌ Cashflow {monthly_cashflow:.0f} €/mes: negatiu. "
+                "Això genera tensió de liquiditat i augmenta el risc operatiu."
+            )
     elif monthly_cashflow < 100:
         score += 1
-        notes.append(f"Cashflow mensual molt just ({monthly_cashflow:.0f} €/mes).")
+        notes.append(
+            f"🟡 Cashflow {monthly_cashflow:.0f} €/mes: molt just. "
+            "Hi ha poc marge per reparacions, mesos buits o impagaments."
+        )
     else:
-        notes.append(f"Cashflow mensual positiu ({monthly_cashflow:.0f} €/mes).")
+        notes.append(
+            f"🟢 Cashflow {monthly_cashflow:.0f} €/mes: positiu. Bona capacitat de resistència."
+        )
 
-    # LTV
-    if ltv > 0.9:
-        score += 3
-        notes.append(f"LTV {ltv*100:.0f}% > 90%: alt apalancament, més risc davant baixades de preu o refinançament.")
-    elif ltv > 0.8:
+    # -------------------------------------------------
+    # 3) LTV: apalancament
+    # -------------------------------------------------
+    ltv_pct = ltv * 100.0
+    if ltv >= 0.90:
+        score += 4
+        notes.append(
+            f"❌ LTV {ltv_pct:.0f}%: apalancament molt alt (≥ 90%). "
+            "Més risc davant baixades de preu, refinançaments i canvis de condicions bancàries."
+        )
+    elif ltv >= 0.80:
         score += 2
-        notes.append(f"LTV {ltv*100:.0f}% > 80%: apalancament elevat.")
-    elif ltv > 0.7:
+        notes.append(
+            f"⚠️ LTV {ltv_pct:.0f}%: apalancament alt (80–90%). "
+            "Vigila especialment la sensibilitat als tipus i a la vacància."
+        )
+    elif ltv >= 0.70:
         score += 1
-        notes.append(f"LTV {ltv*100:.0f}% moderat.")
+        notes.append(
+            f"🟡 LTV {ltv_pct:.0f}%: apalancament moderat (70–80%)."
+        )
     else:
-        notes.append(f"LTV {ltv*100:.0f}% conservador.")
+        notes.append(
+            f"🟢 LTV {ltv_pct:.0f}%: apalancament conservador (< 70%)."
+        )
 
-    # Sensibilitat a shocks
+    # -------------------------------------------------
+    # 4) Sensibilitat: shocks de tipus (si es proporciona)
+    # sensitivity_cashflow_after_shocks = llista de CF mensuals sota shocks
+    # -------------------------------------------------
     if sensitivity_cashflow_after_shocks:
-        if any(cf < 0 for cf in sensitivity_cashflow_after_shocks):
-            score += 2
-            notes.append("Sensibilitat: en algun escenari de pujada de tipus, el cashflow passa a negatiu.")
-        else:
-            notes.append("Sensibilitat: el cashflow aguanta els shocks de tipus considerats.")
+        # pitjor i millor (mensual)
+        worst = min(sensitivity_cashflow_after_shocks)
+        best = max(sensitivity_cashflow_after_shocks)
 
-    # Determinar nivell
-    if score >= 7:
-        return "alt", notes
-    if score >= 4:
-        return "mitjà", notes
-    return "baix", notes
+        if worst < 0:
+            score += 2
+            notes.append(
+                f"⚠️ Sensibilitat a tipus: en algun shock el cashflow passa a negatiu "
+                f"(pitjor escenari: {worst:.0f} €/mes)."
+            )
+        else:
+            notes.append(
+                f"🟢 Sensibilitat a tipus: el cashflow aguanta els shocks considerats "
+                f"(pitjor escenari: {worst:.0f} €/mes)."
+            )
+
+        # si el rang és gran, afegim nota de volatilitat
+        if (best - worst) > 150:
+            score += 1
+            notes.append(
+                f"🟡 Volatilitat: el cashflow canvia molt amb els tipus "
+                f"(rang aproximat: {worst:.0f} a {best:.0f} €/mes)."
+            )
+
+    # -------------------------------------------------
+    # Nivell final (llindars simples però coherents)
+    # -------------------------------------------------
+    if score >= 9:
+        level = "alt"
+    elif score >= 5:
+        level = "mitjà"
+    else:
+        level = "baix"
+
+    # Afegim una línia resum (molt útil per UI)
+    notes.insert(0, f"📌 Risc global: **{level.upper()}** (puntuació {score}/15 aprox.)")
+    return level, notes
 
 
 def profitability_conclusion(
@@ -356,38 +433,72 @@ def profitability_conclusion(
     min_cash_on_cash_pct: float = 5.0
 ) -> Tuple[bool, str]:
     """
-    Criteris simples (explicables):
-    - Rendible si:
-        - cashflow anual >= 0
-        - DSCR >= 1.10 (marge mínim)
-        - cash-on-cash >= min_cash_on_cash_pct (per defecte 5%)
+    Conclusió de rendibilitat en llenguatge clar.
+
+    Criteri base:
+    - Cashflow anual >= 0  (no requereix aportar diners)
+    - DSCR >= 1.10         (marge mínim de seguretat)
+    - Cash-on-cash >= X%   (rendibilitat mínima sobre capital invertit)
     """
-    reasons = []
+
+    explanations: List[str] = []
     ok = True
 
+    # 1) Cashflow
     if annual_cashflow < 0:
         ok = False
-        reasons.append(f"cashflow anual negatiu ({annual_cashflow:.0f} €/any)")
+        explanations.append(
+            f"❌ Cashflow anual: {annual_cashflow:.0f} € (negatiu). "
+            "La inversió requereix aportacions de caixa."
+        )
+    elif annual_cashflow < 1000:
+        explanations.append(
+            f"🟡 Cashflow anual: {annual_cashflow:.0f} € (molt just). "
+            "Hi ha poc marge per imprevistos."
+        )
     else:
-        reasons.append(f"cashflow anual positiu ({annual_cashflow:.0f} €/any)")
+        explanations.append(
+            f"🟢 Cashflow anual: {annual_cashflow:.0f} € (positiu)."
+        )
 
-    if dscr < 1.10:
+    # 2) DSCR
+    if not math.isfinite(dscr):
+        explanations.append("🟢 DSCR: ∞ (sense deute).")
+    elif dscr < 1.10:
         ok = False
-        reasons.append(f"DSCR insuficient ({dscr:.2f} < 1.10)")
+        explanations.append(
+            f"❌ DSCR: {dscr:.2f} (< 1.10). "
+            "Cobertura insuficient de la hipoteca."
+        )
+    elif dscr < 1.25:
+        explanations.append(
+            f"🟡 DSCR: {dscr:.2f} (acceptable però just)."
+        )
     else:
-        reasons.append(f"DSCR acceptable ({dscr:.2f})")
+        explanations.append(
+            f"🟢 DSCR: {dscr:.2f} (amb bon marge)."
+        )
 
+    # 3) Cash-on-cash
     if cash_on_cash_pct < min_cash_on_cash_pct:
         ok = False
-        reasons.append(f"cash-on-cash baix ({cash_on_cash_pct:.2f}% < {min_cash_on_cash_pct:.0f}%)")
+        explanations.append(
+            f"❌ Cash-on-cash: {cash_on_cash_pct:.2f}% (< {min_cash_on_cash_pct:.0f}%). "
+            "Rendibilitat baixa pel capital invertit."
+        )
+    elif cash_on_cash_pct < 8:
+        explanations.append(
+            f"🟡 Cash-on-cash: {cash_on_cash_pct:.2f}% (moderada)."
+        )
     else:
-        reasons.append(f"cash-on-cash correcte ({cash_on_cash_pct:.2f}%)")
+        explanations.append(
+            f"🟢 Cash-on-cash: {cash_on_cash_pct:.2f}% (bona)."
+        )
 
-    label = "RENDIBLE" if ok else "NO RENDIBLE"
-    conclusion = f"{label}: " + "; ".join(reasons) + "."
+    header = "✅ INVERSIÓ POTENCIALMENT RENDIBLE" if ok else "❌ INVERSIÓ AMB RISC O POCA RENDIBILITAT"
+    conclusion = header + "\n\nMotius:\n- " + "\n- ".join(explanations)
+
     return ok, conclusion
-
-
 # -----------------------------
 # Motor principal de càlcul
 # -----------------------------
@@ -682,3 +793,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nInterromput per l'usuari.")
         raise SystemExit(130)
+
