@@ -320,7 +320,7 @@ with g4:
             (15, 30, "#e74c3c"),
         ],
     )
-
+st.divider()
 st.caption(comp.conclusion)
 st.divider()
 
@@ -428,6 +428,7 @@ with tab3:
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
 
 
