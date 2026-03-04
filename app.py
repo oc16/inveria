@@ -249,10 +249,10 @@ st.title("Càlcul d'inversió immobiliària")
 # KPIs (ràpids)
 k1, k2, k3, k4, k5 = st.columns([1, 1, 1, 1, 1.2])
 k1.metric("Inversió inicial", euro(total_initial_investment))
-k5.metric("Cash-on-cash", pct(comp.cash_on_cash_pct))
-k1.metric("Quota hipoteca / mes", euro(comp.monthly_mortgage_payment))
-k2.metric("Cashflow / mes", euro(comp.monthly_cashflow))
-k3.metric("Cashflow / any", euro(comp.annual_cashflow))
+k2.metric("Cash-on-cash", pct(comp.cash_on_cash_pct))
+k3.metric("Quota hipoteca / mes", euro(comp.monthly_mortgage_payment))
+k4.metric("Cashflow / mes", euro(comp.monthly_cashflow))
+k5.metric("Cashflow / any", euro(comp.annual_cashflow))
 
 c6, c7, c8, c9, c10 = st.columns(5)
 c6.metric("LTV", pct(comp.ltv * 100.0))
@@ -426,6 +426,7 @@ with tab3:
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
 
 
