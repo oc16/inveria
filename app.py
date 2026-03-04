@@ -244,14 +244,14 @@ payback_years, equity_payback_years = dynamic_paybacks_compound(
 # -----------------------------
 # Layout
 # -----------------------------
-st.title("Dashboard d'inversió immobiliària (lloguer)")
+st.title("Dashboard d'inversió immobiliària per lloguer")
 
 # KPIs (ràpids)
 k1, k2, k3, k4, k5 = st.columns([1, 1, 1, 1, 1.2])
 k1.metric("Quota hipoteca / mes", euro(comp.monthly_mortgage_payment))
 k2.metric("Cashflow / mes", euro(comp.monthly_cashflow))
 k3.metric("Cashflow / any", euro(comp.annual_cashflow))
-k4.metric("Capital inicial", euro(total_initial_investment))  # <-- útil i no repetitiu
+k4.metric("Capital inicial", euro(total_initial_investment))
 k5.metric("Cash-on-cash", pct(comp.cash_on_cash_pct))
 
 c6, c7, c8, c9, c10 = st.columns(5)
@@ -426,4 +426,5 @@ with tab3:
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
