@@ -102,7 +102,7 @@ def dscr_gauge(dscr: float):
         }
     ))
 
-    fig.update_layout(margin=dict(l=10, r=10, t=50, b=10), height=260)
+    fig.update_layout(margin=dict(l=10, r=10, t=50, b=10), height=130)
     st.plotly_chart(fig, use_container_width=True)
     
 # -----------------------------
@@ -294,3 +294,4 @@ with tab3:
         else:
 
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
