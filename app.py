@@ -197,7 +197,7 @@ annual_appreciation_pct = st.sidebar.number_input("Revalorització anual (%) (op
 annual_rent_growth_pct = st.sidebar.number_input("Creixement anual lloguer (%) (opcional)", min_value=0.0, value=2.0, step=0.5)
 
 st.sidebar.divider()
-st.sidebar.subheader("Escenaris")
+st.sidebar.title("Escenaris") # st.sidebar.subheader("Escenaris")
 sc_down = st.sidebar.multiselect("Entrades (%)", [10, 15, 20, 25, 30, 35, 40], default=[10, 20, 30, 40])
 sc_terms = st.sidebar.multiselect("Terminis (anys)", [10, 15, 20, 25, 30, 35], default=[20, 25, 30])
 sc_shocks = st.sidebar.multiselect("Shocks TIN (punts %)", [0.0, 0.5, 1.0, 2.0], default=[0.0, 1.0, 2.0])
@@ -426,5 +426,6 @@ with tab3:
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
 
