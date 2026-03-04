@@ -298,11 +298,11 @@ with g3:
         payback_years,
         suffix="a",
         vmin=0,
-        vmax=30,
+        vmax=40,
         steps=[
             (0, 10,  "#2ecc71"),
             (10, 20, "#f1c40f"),
-            (20, 30, "#e74c3c"),
+            (20, 40, "#e74c3c"),
         ],
     )
 
@@ -426,6 +426,7 @@ with tab3:
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
 
 
