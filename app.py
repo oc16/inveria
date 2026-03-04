@@ -164,15 +164,12 @@ loan_amount = max(0.0, purchase_price - down_payment_amount)
 st.title("Dashboard d'inversió immobiliària (lloguer)")
 
 # 1a fila: 4 KPIs + Gauge DSCR (sense repetir DSCR en metric)
-k1, k2, k3, k4, g = st.columns([1, 1, 1, 1, 1.2])
+k1, k2, k3, k4 = st.columns([1, 1, 1, 1])
 
 k1.metric("Quota hipoteca / mes", euro(comp.monthly_mortgage_payment))
 k2.metric("Cashflow / mes", euro(comp.monthly_cashflow))
 k3.metric("Cashflow / any", euro(comp.annual_cashflow))
 k4.metric("Cash-on-cash", pct(comp.cash_on_cash_pct))
-
-with g:
-    dscr_gauge(comp.dscr)  # <-- la teva funció gauge ja declarada
 
 # 2a fila: resta de KPIs
 c6, c7, c8, c9, c10 = st.columns(5)
@@ -384,5 +381,6 @@ with tab3:
         else:
 
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
 
