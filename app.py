@@ -254,6 +254,12 @@ k3.metric("Cashflow / any", euro(comp.annual_cashflow))
 k4.metric("Capital inicial", euro(total_initial_investment))
 k5.metric("Cash-on-cash", pct(comp.cash_on_cash_pct))
 
+st.subheader("Operativa")
+a1, a2, a3 = st.columns(3)
+a1.metric("Quota hipoteca / mes", euro(comp.monthly_mortgage_payment))
+a2.metric("Cashflow / mes", euro(comp.monthly_cashflow))
+a3.metric("Cashflow / any", euro(comp.annual_cashflow))
+
 c6, c7, c8, c9, c10 = st.columns(5)
 c6.metric("LTV", pct(comp.ltv * 100.0))
 c7.metric("Rend. bruta", pct(comp.gross_yield_pct))
@@ -426,6 +432,7 @@ with tab3:
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
 
 
