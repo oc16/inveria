@@ -3,6 +3,7 @@ import math
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+import plotly.graph_objects as go
 
 from analysis_inversio import (
     InvestmentInput,
@@ -63,7 +64,47 @@ def amortization_schedule(principal: float, annual_rate_pct: float, term_years: 
     df["Capital_acum_€"] = df["Capital_€"].cumsum()
     df["Any"] = ((df["Mes"] - 1) // 12) + 1
     return df
+    
+def dscr_gauge(dscr: float):
+    # Llindars típics (ajusta si vols):
+    # < 1.00 = vermell (no cobreix deute)
+    # 1.00–1.25 = groc (justet)
+    # > 1.25 = verd (sa)
+    if dscr is None:
+        dscr = 0.0
 
+    # Si no hi ha deute, el teu comp.dscr pot ser inf
+    if dscr == float("inf"):
+        st.success("DSCR: ∞ (sense deute)")
+        return
+
+    vmax = 2.5  # escala del gauge
+    v = max(0.0, min(float(dscr), vmax))
+
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=v,
+        number={"suffix": "x", "font": {"size": 40}},
+        title={"text": "DSCR", "font": {"size": 22}},
+        gauge={
+            "axis": {"range": [0, vmax]},
+            "bar": {"color": "black"},
+            "steps": [
+                {"range": [0.0, 1.0], "color": "#e74c3c"},    # vermell
+                {"range": [1.0, 1.25], "color": "#f1c40f"},   # groc
+                {"range": [1.25, vmax], "color": "#2ecc71"},  # verd
+            ],
+            "threshold": {
+                "line": {"color": "black", "width": 4},
+                "thickness": 0.8,
+                "value": v
+            }
+        }
+    ))
+
+    fig.update_layout(margin=dict(l=10, r=10, t=50, b=10), height=260)
+    st.plotly_chart(fig, use_container_width=True)
+    
 # -----------------------------
 # Sidebar inputs
 # -----------------------------
@@ -124,14 +165,18 @@ loan_amount = max(0.0, purchase_price - down_payment_amount)
 # -----------------------------
 st.title("Dashboard d'inversió immobiliària (lloguer)")
 
-# KPIs
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Quota hipoteca / mes", euro(comp.monthly_mortgage_payment))
-c2.metric("Cashflow / mes", euro(comp.monthly_cashflow))
-c3.metric("Cashflow / any", euro(comp.annual_cashflow))
-c4.metric("Cash-on-cash", pct(comp.cash_on_cash_pct))
-c5.metric("DSCR", f"{comp.dscr:.2f}" if math.isfinite(comp.dscr) else "∞")
+# 1a fila: 4 KPIs + Gauge DSCR (sense repetir DSCR en metric)
+k1, k2, k3, k4, g = st.columns([1, 1, 1, 1, 1.2])
 
+k1.metric("Quota hipoteca / mes", euro(comp.monthly_mortgage_payment))
+k2.metric("Cashflow / mes", euro(comp.monthly_cashflow))
+k3.metric("Cashflow / any", euro(comp.annual_cashflow))
+k4.metric("Cash-on-cash", pct(comp.cash_on_cash_pct))
+
+with g:
+    dscr_gauge(comp.dscr)  # <-- la teva funció gauge ja declarada
+
+# 2a fila: resta de KPIs
 c6, c7, c8, c9, c10 = st.columns(5)
 c6.metric("LTV", pct(comp.ltv * 100.0))
 c7.metric("Rend. bruta", pct(comp.gross_yield_pct))
@@ -247,4 +292,5 @@ with tab3:
             )
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
+
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
