@@ -28,12 +28,10 @@ def amortization_schedule(principal: float, annual_rate_pct: float, term_years: 
     Retorna DF mensual amb saldo.
     """
     n = int(term_years) * 12
-    if n <= 0:
+    if n <= 0 or principal <= 0:
         return pd.DataFrame()
 
     r = (annual_rate_pct / 100.0) / 12.0
-    if principal <= 0:
-        return pd.DataFrame()
 
     # Quota
     if abs(r) < 1e-12:
@@ -55,8 +53,6 @@ def amortization_schedule(principal: float, annual_rate_pct: float, term_years: 
             "Interessos_€": interest,
             "Capital_€": principal_paid,
             "Saldo_€": balance,
-            "Interessos_acum_€": None,  # ho omplim després
-            "Capital_acum_€": None,
         })
 
     df = pd.DataFrame(rows)
@@ -64,16 +60,15 @@ def amortization_schedule(principal: float, annual_rate_pct: float, term_years: 
     df["Capital_acum_€"] = df["Capital_€"].cumsum()
     df["Any"] = ((df["Mes"] - 1) // 12) + 1
     return df
-    
+
 def kpi_gauge(title: str, value: float, suffix: str, vmin: float, vmax: float, steps, height: int = 240):
     """
     steps = [(a,b,color), ...] on a..b dins [vmin,vmax]
     """
-    # value pot ser inf
     if value is None or (isinstance(value, float) and math.isnan(value)):
         value = vmin
+
     if value == float("inf"):
-        # Mostrem al màxim però imprimim "∞" al número
         display_value = vmax
         number = {"valueformat": "", "suffix": suffix, "font": {"size": 34}}
         show_infty = True
@@ -96,12 +91,10 @@ def kpi_gauge(title: str, value: float, suffix: str, vmin: float, vmax: float, s
     ))
     fig.update_layout(margin=dict(l=10, r=10, t=50, b=10), height=height)
 
-    # Truc per mostrar ∞ en text sense duplicar KPI en metric
+    st.plotly_chart(fig, use_container_width=True)
     if show_infty:
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("∞ (sense deute / denominador ~0)")
-    else:
-        st.plotly_chart(fig, use_container_width=True)
+        st.caption("∞ (sense deute o denominador ~0)")
+
 def safe_float(x, default=0.0):
     try:
         if x is None:
@@ -113,7 +106,7 @@ def safe_float(x, default=0.0):
     except Exception:
         return default
 
-def dynamic_paybacks(
+def dynamic_paybacks_compound(
     initial_investment: float,
     base_annual_cashflow: float,
     rent_growth_pct: float,
@@ -123,24 +116,25 @@ def dynamic_paybacks(
     max_years: int = 40,
 ):
     """
-    Retorna (payback_years, equity_payback_years).
-    - Payback: acumulat de cashflow
-    - Equity Payback: acumulat de cashflow + equity (amortització capital + revalorització)
-    Nota: cashflow creix a un ritme constant = rent_growth_pct (aprox).
+    Payback i Equity Payback DINÀMICS + COMPOSTOS:
+    - Payback: suma(CF_t) fins recuperar la inversió inicial total
+    - Equity Payback: suma(CF_t + principal_t + appreciation_t) fins recuperar la inversió inicial total
+    Notes:
+    - CF_t creix compost amb rent_growth_pct
+    - appreciation_t és l'increment anual sobre el valor compost: V_{t-1} * g_app
+    - principal_t s'obté de l'amortització real (Capital_€ agregat anual)
     """
     inv0 = safe_float(initial_investment, 0.0)
     if inv0 <= 0:
         return 0.0, 0.0
 
+    base_cf = safe_float(base_annual_cashflow, 0.0)
     g_rent = safe_float(rent_growth_pct, 0.0) / 100.0
     g_app = safe_float(appreciation_pct, 0.0) / 100.0
-    base_cf = safe_float(base_annual_cashflow, 0.0)
 
-    # Amortització anual real del principal (de la taula)
     principal_by_year = {}
     if amort_df is not None and not amort_df.empty:
-        tmp = amort_df.groupby("Any", as_index=True)["Capital_€"].sum()
-        principal_by_year = tmp.to_dict()
+        principal_by_year = amort_df.groupby("Any")["Capital_€"].sum().to_dict()
 
     cash_acc = 0.0
     equity_acc = 0.0
@@ -148,18 +142,18 @@ def dynamic_paybacks(
     eq_payback = float("inf")
 
     for year in range(1, max_years + 1):
-        # Cashflow anual projectat (aprox creixement lloguer)
+        # cashflow compost
         cf_y = base_cf * ((1.0 + g_rent) ** (year - 1))
 
-        # Amortització de capital aquell any (si s’acaba la hipoteca, serà 0)
+        # capital amortitzat real aquell any
         principal_y = float(principal_by_year.get(year, 0.0))
 
-        # Revalorització de l'actiu aquell any (aprox sobre el preu de compra)
-        # Si vols més realista: purchase_price * ((1+g_app)**(year-1)) * g_app
-        appr_y = purchase_price * g_app
+        # revalorització composta: increment any t = valor_{t-1} * g_app
+        value_prev = purchase_price * ((1.0 + g_app) ** (year - 1))
+        appr_y = value_prev * g_app
 
         cash_acc += cf_y
-        equity_acc += cf_y + principal_y + appr_y
+        equity_acc += (cf_y + principal_y + appr_y)
 
         if payback == float("inf") and cash_acc >= inv0:
             payback = float(year)
@@ -186,6 +180,12 @@ term_years = st.sidebar.slider("Termini hipoteca (anys)", min_value=5, max_value
 interest_type = st.sidebar.selectbox("Tipus d'interès", options=["fixe", "variable"], index=0)
 annual_interest_rate = st.sidebar.number_input("Interès anual TIN (%)", min_value=0.0, value=3.2, step=0.1)
 
+st.sidebar.subheader("Costos inicials")
+renovation_cost_eur = st.sidebar.number_input(
+    "Reforma inicial (€)",
+    min_value=0.0, value=0.0, step=500.0
+)
+
 monthly_fixed_expenses = st.sidebar.number_input(
     "Despeses fixes mensuals (€) (IBI, comunitat, assegurança, manteniment...)",
     min_value=0.0, value=50.0, step=10.0
@@ -199,7 +199,6 @@ annual_rent_growth_pct = st.sidebar.number_input("Creixement anual lloguer (%) (
 
 st.sidebar.divider()
 st.sidebar.subheader("Escenaris")
-
 sc_down = st.sidebar.multiselect("Entrades (%)", [10, 15, 20, 25, 30, 35, 40], default=[10, 20, 30, 40])
 sc_terms = st.sidebar.multiselect("Terminis (anys)", [10, 15, 20, 25, 30, 35], default=[20, 25, 30])
 sc_shocks = st.sidebar.multiselect("Shocks TIN (punts %)", [0.0, 0.5, 1.0, 2.0], default=[0.0, 1.0, 2.0])
@@ -219,28 +218,43 @@ inp = InvestmentInput(
     default_pct=default_pct,
     annual_appreciation_pct=annual_appreciation_pct,
     annual_rent_growth_pct=annual_rent_growth_pct,
+    renovation_cost_eur=renovation_cost_eur,  # <-- NOU
 )
 
 comp = analyze_investment(inp)
 
-# Loan amount (mateixa lògica del teu script: es finança només el preu - entrada)
+# Loan amount (la hipoteca finança només el preu - entrada)
 down_payment_amount = purchase_price * (down_payment_pct / 100.0)
 loan_amount = max(0.0, purchase_price - down_payment_amount)
+
+# Amortització (una vegada) per usar a gauges + tab amortització
+df_am = amortization_schedule(loan_amount, annual_interest_rate, int(term_years))
+
+# Paybacks (dinàmics, compostos, i amb inversió inicial TOTAL real)
+total_initial_investment = comp.initial_cash_invested  # entrada + ITP + notaria/registre/taxació + reforma
+payback_years, equity_payback_years = dynamic_paybacks_compound(
+    initial_investment=total_initial_investment,
+    base_annual_cashflow=comp.annual_cashflow,
+    rent_growth_pct=annual_rent_growth_pct,
+    purchase_price=purchase_price,
+    appreciation_pct=annual_appreciation_pct,
+    amort_df=df_am,
+    max_years=40,
+)
 
 # -----------------------------
 # Layout
 # -----------------------------
 st.title("Dashboard d'inversió immobiliària (lloguer)")
 
-# 1a fila: 4 KPIs + Gauge DSCR (sense repetir DSCR en metric)
-k1, k2, k3, k4 = st.columns([1, 1, 1, 1])
-
+# KPIs (ràpids)
+k1, k2, k3, k4, k5 = st.columns([1, 1, 1, 1, 1.2])
 k1.metric("Quota hipoteca / mes", euro(comp.monthly_mortgage_payment))
 k2.metric("Cashflow / mes", euro(comp.monthly_cashflow))
 k3.metric("Cashflow / any", euro(comp.annual_cashflow))
-k4.metric("Cash-on-cash", pct(comp.cash_on_cash_pct))
+k4.metric("Capital inicial", euro(total_initial_investment))  # <-- útil i no repetitiu
+k5.metric("Cash-on-cash", pct(comp.cash_on_cash_pct))
 
-# 2a fila: resta de KPIs
 c6, c7, c8, c9, c10 = st.columns(5)
 c6.metric("LTV", pct(comp.ltv * 100.0))
 c7.metric("Rend. bruta", pct(comp.gross_yield_pct))
@@ -248,42 +262,13 @@ c8.metric("Rend. neta (NOI)", pct(comp.net_yield_pct))
 c9.metric("Punt mort lloguer / mes", euro(comp.breakeven_monthly_rent))
 c10.metric("Risc", comp.risk_level)
 
-# --- Càlculs base ---
-# Cash-on-cash ja el tens a comp.cash_on_cash_pct (percent)
-coc = comp.cash_on_cash_pct  # %
-
-# DSCR ja el tens a comp.dscr
-dscr = comp.dscr
-
-# Payback (anys) = capital inicial / cashflow anual
-if comp.annual_cashflow > 0:
-    payback_years = down_payment_amount / comp.annual_cashflow
-else:
-    payback_years = float("inf")
-
-# Equity Payback (anys) = capital inicial / (cashflow + equity gained anual)
-# equity gained anual ≈ capital amortitzat (1r any) + revalorització (1r any)
-df_am = amortization_schedule(loan_amount, annual_interest_rate, int(term_years))
-principal_paid_year1 = float(df_am[df_am["Mes"] <= 12]["Capital_€"].sum()) if not df_am.empty else 0.0
-appreciation_year1 = purchase_price * (annual_appreciation_pct / 100.0)
-
-annual_equity_gain = principal_paid_year1 + appreciation_year1
-equity_cashflow = comp.annual_cashflow + annual_equity_gain
-
-if equity_cashflow > 0:
-    equity_payback_years = down_payment_amount / equity_cashflow
-else:
-    equity_payback_years = float("inf")
-
-
-# --- Layout: 4 gauges en una fila ---
+# Gauges (1 fila)
 g1, g2, g3, g4 = st.columns(4)
 
 with g1:
-    # CoC: vermell <3%, groc 3-8%, verd >8% (ajusta al teu criteri)
     kpi_gauge(
         "Cash-on-Cash",
-        coc,
+        comp.cash_on_cash_pct,
         suffix="%",
         vmin=0,
         vmax=20,
@@ -295,11 +280,9 @@ with g1:
     )
 
 with g2:
-    # DSCR: vermell <1.0, groc 1.0-1.25, verd >1.25
-    # Rang fins 2.5 per visual
     kpi_gauge(
         "DSCR",
-        dscr if dscr != float("inf") else float("inf"),
+        comp.dscr if comp.dscr != float("inf") else float("inf"),
         suffix="x",
         vmin=0,
         vmax=2.5,
@@ -311,9 +294,8 @@ with g2:
     )
 
 with g3:
-    # Payback: com més petit millor → verd <10a, groc 10-20a, vermell >20a
     kpi_gauge(
-        "Payback",
+        "Payback (cash)",
         payback_years,
         suffix="a",
         vmin=0,
@@ -326,7 +308,6 @@ with g3:
     )
 
 with g4:
-    # Equity Payback: també com més petit millor, sovint surt millor que Payback
     kpi_gauge(
         "Equity Payback",
         equity_payback_years,
@@ -342,17 +323,17 @@ with g4:
 
 st.caption(comp.conclusion)
 
+# -----------------------------
 # Tabs
+# -----------------------------
 tab1, tab2, tab3 = st.tabs(["Amortització", "Ingressos/Despeses", "Escenaris"])
 
 with tab1:
     st.subheader("Amortització de la hipoteca")
 
-    df_am = amortization_schedule(loan_amount, annual_interest_rate, int(term_years))
     if df_am.empty:
         st.info("No hi ha hipoteca (principal 0 o termini 0).")
     else:
-        # Resum anual per fer-ho llegible
         df_year = df_am.groupby("Any", as_index=False).agg({
             "Quota_€": "sum",
             "Interessos_€": "sum",
@@ -399,7 +380,6 @@ with tab1:
 with tab2:
     st.subheader("Ingressos i despeses (anual)")
 
-    # Muntatge simple de components anuals
     df = pd.DataFrame([
         {"Categoria": "Ingressos bruts", "€ / any": comp.gross_annual_rent},
         {"Categoria": "Ingressos nets (vacància + impagament)", "€ / any": comp.net_annual_rent_after_vacancy_default},
@@ -411,7 +391,6 @@ with tab2:
 
     fig = px.bar(df, x="Categoria", y="€ / any", title="P&L anual (simplificat)")
     st.plotly_chart(fig, use_container_width=True)
-
     st.dataframe(df.style.format({"€ / any": euro}), use_container_width=True)
 
     st.subheader("Explicació de risc")
@@ -434,7 +413,6 @@ with tab3:
         df_sc = df_sc.sort_values(by=["Entrada_%", "Anys", "TIN_%"])
         st.dataframe(df_sc, use_container_width=True, height=420)
 
-        # Heatmap: CoC_% per (Entrada, Anys) a shock 0.0 (o el primer seleccionat)
         shock_for_map = float(sc_shocks[0]) if len(sc_shocks) else 0.0
         df_map = df_sc[df_sc["TIN_%"] == round(annual_interest_rate + shock_for_map, 2)].copy()
 
@@ -448,9 +426,4 @@ with tab3:
             )
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
-
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
-
-
-
-
