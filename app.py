@@ -180,7 +180,7 @@ renovation_cost_eur = st.sidebar.number_input(
 
 st.sidebar.title("Finançament")
 term_years = st.sidebar.slider("Termini hipoteca (anys)", min_value=5, max_value=35, value=30, step=1)
-interest_type = st.sidebar.selectbox("Tipus d'interès", options=["fixe", "variable"], index=0)
+interest_type = "fixe"
 annual_interest_rate = st.sidebar.number_input("Interès anual TIN (%)", min_value=0.0, value=3.2, step=0.1)
 
 st.sidebar.title("Explotació")
@@ -217,7 +217,7 @@ inp = InvestmentInput(
     default_pct=default_pct,
     annual_appreciation_pct=annual_appreciation_pct,
     annual_rent_growth_pct=annual_rent_growth_pct,
-    renovation_cost_eur=renovation_cost_eur,  # <-- NOU
+    renovation_cost_eur=renovation_cost_eur,
 )
 
 comp = analyze_investment(inp)
@@ -426,6 +426,7 @@ with tab3:
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
 
 
