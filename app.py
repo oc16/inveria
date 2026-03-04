@@ -419,15 +419,44 @@ with tab3:
 
         if not df_map.empty:
             pivot = df_map.pivot(index="Entrada_%", columns="Anys", values="CoC_%")
+        
+            # Mateixos llindars que el gauge
+            vmin, v_yellow, v_green, vmax = 0.0, 3.0, 8.0, 20.0
+        
+            # Clamp per evitar outliers
+            pivot_clamped = pivot.clip(lower=vmin, upper=vmax)
+        
+            # Normalització 0..1 per la colorscale
+            p0 = (v_yellow - vmin) / (vmax - vmin)
+            p1 = (v_green - vmin) / (vmax - vmin)
+        
+            # Vermell → groc → verd
+            cscale = [
+                (0.0,  "#e74c3c"), (p0,  "#e74c3c"),
+                (p0,   "#f1c40f"), (p1,  "#f1c40f"),
+                (p1,   "#2ecc71"), (1.0, "#2ecc71"),
+            ]
+        
             fig_hm = px.imshow(
-                pivot,
+                pivot_clamped,
                 aspect="auto",
-                title=f"Heatmap CoC_% (TIN base + {shock_for_map}pp)",
+                title=f"Heatmap Cash-on-Cash (%) (TIN base + {shock_for_map}pp)",
                 labels=dict(x="Anys", y="Entrada_%", color="CoC_%"),
+                zmin=vmin,
+                zmax=vmax,
+                color_continuous_scale=cscale,
+                text_auto=True
             )
+        
+            fig_hm.update_traces(
+                texttemplate="%{z:.1f}%",
+                textfont_size=12
+            )
+        
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
 
 
