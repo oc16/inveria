@@ -169,31 +169,30 @@ def dynamic_paybacks_compound(
 # -----------------------------
 # Sidebar inputs
 # -----------------------------
-st.sidebar.title("Inputs")
 
+st.sidebar.title("Inversió inicial")
 purchase_price = st.sidebar.number_input("Preu de compra (€)", min_value=0.0, value=130000.0, step=5000.0)
-monthly_rent = st.sidebar.number_input("Lloguer mensual (€)", min_value=0.0, value=650.0, step=25.0)
-
 down_payment_pct = st.sidebar.slider("Entrada (%)", min_value=0.0, max_value=60.0, value=20.0, step=1.0)
-term_years = st.sidebar.slider("Termini hipoteca (anys)", min_value=5, max_value=35, value=30, step=1)
+renovation_cost_eur = st.sidebar.number_input(
+    "Reforma inicial (€)",
+    min_value=0.0, value=5000.0, step=500.0
+)
 
+st.sidebar.title("Finançament")
+term_years = st.sidebar.slider("Termini hipoteca (anys)", min_value=5, max_value=35, value=30, step=1)
 interest_type = st.sidebar.selectbox("Tipus d'interès", options=["fixe", "variable"], index=0)
 annual_interest_rate = st.sidebar.number_input("Interès anual TIN (%)", min_value=0.0, value=3.2, step=0.1)
 
-st.sidebar.subheader("Costos inicials")
-renovation_cost_eur = st.sidebar.number_input(
-    "Reforma inicial (€)",
-    min_value=0.0, value=0.0, step=500.0
-)
-
+st.sidebar.title("Explotació")
+monthly_rent = st.sidebar.number_input("Lloguer mensual (€)", min_value=0.0, value=650.0, step=25.0)
 monthly_fixed_expenses = st.sidebar.number_input(
     "Despeses fixes mensuals (€) (IBI, comunitat, assegurança, manteniment...)",
     min_value=0.0, value=50.0, step=10.0
 )
-
 vacancy_pct = st.sidebar.slider("Vacància (%)", min_value=0.0, max_value=30.0, value=8.0, step=0.5)
 default_pct = st.sidebar.slider("Impagament (%)", min_value=0.0, max_value=20.0, value=8.0, step=0.5)
 
+st.sidebar.title("Revalorització")
 annual_appreciation_pct = st.sidebar.number_input("Revalorització anual (%) (opcional)", min_value=0.0, value=2.0, step=0.5)
 annual_rent_growth_pct = st.sidebar.number_input("Creixement anual lloguer (%) (opcional)", min_value=0.0, value=2.0, step=0.5)
 
@@ -427,3 +426,4 @@ with tab3:
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
