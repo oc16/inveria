@@ -6,7 +6,7 @@ analysis_inversio.py
 Eina per analitzar la rendibilitat d'una inversió immobiliària per lloguer.
 
 Funcionalitats:
-- Cost total d'adquisició incloent ITP (10%) i notaria/gestió (2,5%)
+- Cost total d'adquisició incloent ITP (10%), notaria/registre/taxació (2,5%) i reforma (parametritzable)
 - Hipoteca amb amortització francesa (quota constant)
 - Ingressos nets (vacància + impagament)
 - Despeses operatives + hipoteca
@@ -47,7 +47,7 @@ except Exception:
 # -----------------------------
 
 ITP_RATE = 0.10
-NOTARY_RATE = 0.025
+NOTARY_RATE = 0.025  # notaria/registre/taxació (per defecte 2,5%)
 
 DEFAULT_ENTRY_SCENARIOS = [10, 20, 30, 40]         # %
 DEFAULT_TERM_SCENARIOS = [15, 20, 25, 30]          # anys
@@ -71,6 +71,7 @@ class InvestmentInput:
     default_pct: float                    # % (impagament, pot ser 0)
     annual_appreciation_pct: float        # % (opcional, pot ser 0)
     annual_rent_growth_pct: float         # % (opcional, pot ser 0)
+    renovation_cost_eur: float          # € (despeses de reforma inicials, no finançades)
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,7 @@ class InvestmentComputed:
     # Costos inicials
     itp_cost: float
     notary_cost: float
+    renovation_cost: float
     total_acquisition_cost: float
     initial_cash_invested: float
 
@@ -186,6 +188,8 @@ def gather_user_input() -> InvestmentInput:
     annual_appreciation_pct = _read_float("Revalorització anual esperada (%) [0 si no vols]: ", min_value=0.0, max_value=100.0)
     annual_rent_growth_pct = _read_float("Increment anual del lloguer (%) [0 si no vols]: ", min_value=0.0, max_value=100.0)
 
+    renovation_cost_eur = _read_float("Despeses de reforma inicial (€) [0 si no vols]: ", min_value=0.0)
+
     return InvestmentInput(
         purchase_price=purchase_price,
         monthly_rent=monthly_rent,
@@ -197,7 +201,8 @@ def gather_user_input() -> InvestmentInput:
         vacancy_pct=vacancy_pct,
         default_pct=default_pct,
         annual_appreciation_pct=annual_appreciation_pct,
-        annual_rent_growth_pct=annual_rent_growth_pct
+        annual_rent_growth_pct=annual_rent_growth_pct,
+        renovation_cost_eur=renovation_cost_eur
     )
 
 
@@ -205,15 +210,16 @@ def gather_user_input() -> InvestmentInput:
 # Finances: hipoteca, mètriques
 # -----------------------------
 
-def compute_acquisition_costs(purchase_price: float) -> Tuple[float, float, float]:
+def compute_acquisition_costs(purchase_price: float, renovation_cost_eur: float = 0.0) -> Tuple[float, float, float, float]:
     """
     Retorna: (itp_cost, notary_cost, total_acquisition_cost)
     total_acquisition_cost = compra + ITP(10%) + notaria/gestió(2,5%)
     """
     itp_cost = purchase_price * ITP_RATE
     notary_cost = purchase_price * NOTARY_RATE
-    total = purchase_price + itp_cost + notary_cost
-    return itp_cost, notary_cost, total
+    renovation_cost = max(0.0, float(renovation_cost_eur))
+    total = purchase_price + itp_cost + notary_cost + renovation_cost
+    return itp_cost, notary_cost, renovation_cost, total
 
 
 def monthly_payment_french_amortization(principal: float, annual_rate_pct: float, term_years: int) -> float:
@@ -393,13 +399,13 @@ def analyze_investment(inp: InvestmentInput, rate_shock_pct_points: float = 0.0)
     """
 
     # Costos d'adquisició (obligatoris)
-    itp_cost, notary_cost, total_acq = compute_acquisition_costs(inp.purchase_price)
+    itp_cost, notary_cost, renovation_cost, total_acq = compute_acquisition_costs(inp.purchase_price, inp.renovation_cost_eur)
 
     # Entrada (sobre valor compra, no sobre cost total)
     down_payment_amount = inp.purchase_price * (inp.down_payment_pct / 100.0)
 
-    # Assumpció: impostos i notaria NO es financen (capital inicial)
-    initial_cash_invested = down_payment_amount + itp_cost + notary_cost
+    # Assumpció: impostos, notaria/registre/taxació i reforma NO es financen (capital inicial)
+    initial_cash_invested = down_payment_amount + itp_cost + notary_cost + renovation_cost
 
     # Hipoteca finança la resta del preu de compra (no inclou impostos/despeses)
     loan_amount = max(0.0, inp.purchase_price - down_payment_amount)
@@ -476,6 +482,7 @@ def analyze_investment(inp: InvestmentInput, rate_shock_pct_points: float = 0.0)
     return InvestmentComputed(
         itp_cost=itp_cost,
         notary_cost=notary_cost,
+        renovation_cost=renovation_cost,
         total_acquisition_cost=total_acq,
         initial_cash_invested=initial_cash_invested,
         loan_amount=loan_amount,
@@ -528,7 +535,8 @@ def scenario_grid(
                     vacancy_pct=base_inp.vacancy_pct,
                     default_pct=base_inp.default_pct,
                     annual_appreciation_pct=base_inp.annual_appreciation_pct,
-                    annual_rent_growth_pct=base_inp.annual_rent_growth_pct
+                    annual_rent_growth_pct=base_inp.annual_rent_growth_pct,
+                    renovation_cost_eur=base_inp.renovation_cost_eur
                 )
                 comp = analyze_investment(inp, rate_shock_pct_points=shock)
                 rows.append({
@@ -597,14 +605,15 @@ def print_summary(inp: InvestmentInput, comp: InvestmentComputed) -> None:
     print("\n--- Costos inicials (obligatoris) ---")
     print(f"Preu compra:                {money(inp.purchase_price)}")
     print(f"ITP (10%):                  {money(comp.itp_cost)}")
-    print(f"Notaria/gestió (2,5%):      {money(comp.notary_cost)}")
+    print(f"Notaria/registre/taxació (2,5%): {money(comp.notary_cost)}")
+    print(f"Reforma inicial:             {money(comp.renovation_cost)}")
     print(f"Cost total adquisició:      {money(comp.total_acquisition_cost)}")
 
     print("\n--- Capital i hipoteca ---")
     down_amount = inp.purchase_price * (inp.down_payment_pct / 100.0)
     print(f"Entrada ({inp.down_payment_pct:.1f}%):           {money(down_amount)}")
     print(f"Capital inicial invertit:   {money(comp.initial_cash_invested)}")
-    print("  (Assumpció: impostos i notaria NO es financen i es paguen al comptat)")
+    print("  (Assumpció: impostos, notaria/registre/taxació i reforma NO es financen i es paguen al comptat)")
     print(f"Import hipoteca:            {money(comp.loan_amount)}")
     print(f"Quota mensual (francesa):   {money(comp.monthly_mortgage_payment)}")
     print(f"LTV:                        {pct(comp.ltv*100, 1)}")
