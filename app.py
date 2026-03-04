@@ -65,45 +65,43 @@ def amortization_schedule(principal: float, annual_rate_pct: float, term_years: 
     df["Any"] = ((df["Mes"] - 1) // 12) + 1
     return df
     
-def dscr_gauge(dscr: float):
-    # Llindars típics (ajusta si vols):
-    # < 1.00 = vermell (no cobreix deute)
-    # 1.00–1.25 = groc (justet)
-    # > 1.25 = verd (sa)
-    if dscr is None:
-        dscr = 0.0
-
-    # Si no hi ha deute, el teu comp.dscr pot ser inf
-    if dscr == float("inf"):
-        st.success("DSCR: ∞ (sense deute)")
-        return
-
-    vmax = 2.5  # escala del gauge
-    v = max(0.0, min(float(dscr), vmax))
+def kpi_gauge(title: str, value: float, suffix: str, vmin: float, vmax: float, steps, height: int = 240):
+    """
+    steps = [(a,b,color), ...] on a..b dins [vmin,vmax]
+    """
+    # value pot ser inf
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        value = vmin
+    if value == float("inf"):
+        # Mostrem al màxim però imprimim "∞" al número
+        display_value = vmax
+        number = {"valueformat": "", "suffix": suffix, "font": {"size": 34}}
+        show_infty = True
+    else:
+        display_value = max(vmin, min(float(value), vmax))
+        number = {"suffix": suffix, "font": {"size": 34}}
+        show_infty = False
 
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
-        value=v,
-        number={"suffix": "x", "font": {"size": 40}},
-        title={"text": "DSCR", "font": {"size": 22}},
+        value=display_value,
+        number=number,
+        title={"text": title, "font": {"size": 18}},
         gauge={
-            "axis": {"range": [0, vmax]},
+            "axis": {"range": [vmin, vmax]},
             "bar": {"color": "black"},
-            "steps": [
-                {"range": [0.0, 1.0], "color": "#e74c3c"},    # vermell
-                {"range": [1.0, 1.25], "color": "#f1c40f"},   # groc
-                {"range": [1.25, vmax], "color": "#2ecc71"},  # verd
-            ],
-            "threshold": {
-                "line": {"color": "black", "width": 4},
-                "thickness": 0.8,
-                "value": v
-            }
+            "steps": [{"range": [a, b], "color": c} for (a, b, c) in steps],
+            "threshold": {"line": {"color": "black", "width": 4}, "thickness": 0.8, "value": display_value},
         }
     ))
+    fig.update_layout(margin=dict(l=10, r=10, t=50, b=10), height=height)
 
-    fig.update_layout(margin=dict(l=10, r=10, t=50, b=10), height=130)
-    st.plotly_chart(fig, use_container_width=True)
+    # Truc per mostrar ∞ en text sense duplicar KPI en metric
+    if show_infty:
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("∞ (sense deute / denominador ~0)")
+    else:
+        st.plotly_chart(fig, use_container_width=True)
     
 # -----------------------------
 # Sidebar inputs
@@ -183,6 +181,98 @@ c7.metric("Rend. bruta", pct(comp.gross_yield_pct))
 c8.metric("Rend. neta (NOI)", pct(comp.net_yield_pct))
 c9.metric("Punt mort lloguer / mes", euro(comp.breakeven_monthly_rent))
 c10.metric("Risc", comp.risk_level)
+
+# --- Càlculs base ---
+# Cash-on-cash ja el tens a comp.cash_on_cash_pct (percent)
+coc = comp.cash_on_cash_pct  # %
+
+# DSCR ja el tens a comp.dscr
+dscr = comp.dscr
+
+# Payback (anys) = capital inicial / cashflow anual
+if comp.annual_cashflow > 0:
+    payback_years = down_payment_amount / comp.annual_cashflow
+else:
+    payback_years = float("inf")
+
+# Equity Payback (anys) = capital inicial / (cashflow + equity gained anual)
+# equity gained anual ≈ capital amortitzat (1r any) + revalorització (1r any)
+df_am = amortization_schedule(loan_amount, annual_interest_rate, int(term_years))
+principal_paid_year1 = float(df_am[df_am["Mes"] <= 12]["Capital_€"].sum()) if not df_am.empty else 0.0
+appreciation_year1 = purchase_price * (annual_appreciation_pct / 100.0)
+
+annual_equity_gain = principal_paid_year1 + appreciation_year1
+equity_cashflow = comp.annual_cashflow + annual_equity_gain
+
+if equity_cashflow > 0:
+    equity_payback_years = down_payment_amount / equity_cashflow
+else:
+    equity_payback_years = float("inf")
+
+
+# --- Layout: 4 gauges en una fila ---
+g1, g2, g3, g4 = st.columns(4)
+
+with g1:
+    # CoC: vermell <3%, groc 3-8%, verd >8% (ajusta al teu criteri)
+    kpi_gauge(
+        "Cash-on-Cash",
+        coc,
+        suffix="%",
+        vmin=0,
+        vmax=20,
+        steps=[
+            (0, 3,  "#e74c3c"),
+            (3, 8,  "#f1c40f"),
+            (8, 20, "#2ecc71"),
+        ],
+    )
+
+with g2:
+    # DSCR: vermell <1.0, groc 1.0-1.25, verd >1.25
+    # Rang fins 2.5 per visual
+    kpi_gauge(
+        "DSCR",
+        dscr if dscr != float("inf") else float("inf"),
+        suffix="x",
+        vmin=0,
+        vmax=2.5,
+        steps=[
+            (0.0, 1.0,  "#e74c3c"),
+            (1.0, 1.25, "#f1c40f"),
+            (1.25, 2.5, "#2ecc71"),
+        ],
+    )
+
+with g3:
+    # Payback: com més petit millor → verd <10a, groc 10-20a, vermell >20a
+    kpi_gauge(
+        "Payback",
+        payback_years,
+        suffix="a",
+        vmin=0,
+        vmax=30,
+        steps=[
+            (0, 10,  "#2ecc71"),
+            (10, 20, "#f1c40f"),
+            (20, 30, "#e74c3c"),
+        ],
+    )
+
+with g4:
+    # Equity Payback: també com més petit millor, sovint surt millor que Payback
+    kpi_gauge(
+        "Equity Payback",
+        equity_payback_years,
+        suffix="a",
+        vmin=0,
+        vmax=30,
+        steps=[
+            (0, 8,   "#2ecc71"),
+            (8, 15,  "#f1c40f"),
+            (15, 30, "#e74c3c"),
+        ],
+    )
 
 st.caption(comp.conclusion)
 
@@ -294,4 +384,5 @@ with tab3:
         else:
 
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
