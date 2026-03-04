@@ -323,7 +323,7 @@ with g4:
 
 st.caption(comp.conclusion)
 st.divider()
-st.caption(comp.is_profitable)
+st.caption(comp.risk_explanation)
 
 # -----------------------------
 # Tabs
@@ -429,6 +429,7 @@ with tab3:
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
 
 
