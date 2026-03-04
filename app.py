@@ -102,37 +102,106 @@ def kpi_gauge(title: str, value: float, suffix: str, vmin: float, vmax: float, s
         st.caption("∞ (sense deute / denominador ~0)")
     else:
         st.plotly_chart(fig, use_container_width=True)
-    
+def safe_float(x, default=0.0):
+    try:
+        if x is None:
+            return default
+        x = float(x)
+        if math.isnan(x):
+            return default
+        return x
+    except Exception:
+        return default
+
+def dynamic_paybacks(
+    initial_investment: float,
+    base_annual_cashflow: float,
+    rent_growth_pct: float,
+    purchase_price: float,
+    appreciation_pct: float,
+    amort_df: pd.DataFrame,
+    max_years: int = 40,
+):
+    """
+    Retorna (payback_years, equity_payback_years).
+    - Payback: acumulat de cashflow
+    - Equity Payback: acumulat de cashflow + equity (amortització capital + revalorització)
+    Nota: cashflow creix a un ritme constant = rent_growth_pct (aprox).
+    """
+    inv0 = safe_float(initial_investment, 0.0)
+    if inv0 <= 0:
+        return 0.0, 0.0
+
+    g_rent = safe_float(rent_growth_pct, 0.0) / 100.0
+    g_app = safe_float(appreciation_pct, 0.0) / 100.0
+    base_cf = safe_float(base_annual_cashflow, 0.0)
+
+    # Amortització anual real del principal (de la taula)
+    principal_by_year = {}
+    if amort_df is not None and not amort_df.empty:
+        tmp = amort_df.groupby("Any", as_index=True)["Capital_€"].sum()
+        principal_by_year = tmp.to_dict()
+
+    cash_acc = 0.0
+    equity_acc = 0.0
+    payback = float("inf")
+    eq_payback = float("inf")
+
+    for year in range(1, max_years + 1):
+        # Cashflow anual projectat (aprox creixement lloguer)
+        cf_y = base_cf * ((1.0 + g_rent) ** (year - 1))
+
+        # Amortització de capital aquell any (si s’acaba la hipoteca, serà 0)
+        principal_y = float(principal_by_year.get(year, 0.0))
+
+        # Revalorització de l'actiu aquell any (aprox sobre el preu de compra)
+        # Si vols més realista: purchase_price * ((1+g_app)**(year-1)) * g_app
+        appr_y = purchase_price * g_app
+
+        cash_acc += cf_y
+        equity_acc += cf_y + principal_y + appr_y
+
+        if payback == float("inf") and cash_acc >= inv0:
+            payback = float(year)
+
+        if eq_payback == float("inf") and equity_acc >= inv0:
+            eq_payback = float(year)
+
+        if payback != float("inf") and eq_payback != float("inf"):
+            break
+
+    return payback, eq_payback
+
 # -----------------------------
 # Sidebar inputs
 # -----------------------------
 st.sidebar.title("Inputs")
 
-purchase_price = st.sidebar.number_input("Preu de compra (€)", min_value=0.0, value=200000.0, step=5000.0)
-monthly_rent = st.sidebar.number_input("Lloguer mensual (€)", min_value=0.0, value=1100.0, step=25.0)
+purchase_price = st.sidebar.number_input("Preu de compra (€)", min_value=0.0, value=130000.0, step=5000.0)
+monthly_rent = st.sidebar.number_input("Lloguer mensual (€)", min_value=0.0, value=650.0, step=25.0)
 
 down_payment_pct = st.sidebar.slider("Entrada (%)", min_value=0.0, max_value=60.0, value=20.0, step=1.0)
-term_years = st.sidebar.slider("Termini hipoteca (anys)", min_value=5, max_value=35, value=25, step=1)
-annual_interest_rate = st.sidebar.number_input("Interès anual TIN (%)", min_value=0.0, value=3.2, step=0.1)
+term_years = st.sidebar.slider("Termini hipoteca (anys)", min_value=5, max_value=35, value=30, step=1)
 
 interest_type = st.sidebar.selectbox("Tipus d'interès", options=["fixe", "variable"], index=0)
+annual_interest_rate = st.sidebar.number_input("Interès anual TIN (%)", min_value=0.0, value=3.2, step=0.1)
 
 monthly_fixed_expenses = st.sidebar.number_input(
     "Despeses fixes mensuals (€) (IBI, comunitat, assegurança, manteniment...)",
-    min_value=0.0, value=180.0, step=10.0
+    min_value=0.0, value=50.0, step=10.0
 )
 
-vacancy_pct = st.sidebar.slider("Vacància (%)", min_value=0.0, max_value=30.0, value=5.0, step=0.5)
-default_pct = st.sidebar.slider("Impagament (%)", min_value=0.0, max_value=20.0, value=0.0, step=0.5)
+vacancy_pct = st.sidebar.slider("Vacància (%)", min_value=0.0, max_value=30.0, value=8.0, step=0.5)
+default_pct = st.sidebar.slider("Impagament (%)", min_value=0.0, max_value=20.0, value=8.0, step=0.5)
 
-annual_appreciation_pct = st.sidebar.number_input("Revalorització anual (%) (opcional)", min_value=0.0, value=0.0, step=0.5)
-annual_rent_growth_pct = st.sidebar.number_input("Creixement anual lloguer (%) (opcional)", min_value=0.0, value=0.0, step=0.5)
+annual_appreciation_pct = st.sidebar.number_input("Revalorització anual (%) (opcional)", min_value=0.0, value=2.0, step=0.5)
+annual_rent_growth_pct = st.sidebar.number_input("Creixement anual lloguer (%) (opcional)", min_value=0.0, value=2.0, step=0.5)
 
 st.sidebar.divider()
 st.sidebar.subheader("Escenaris")
 
 sc_down = st.sidebar.multiselect("Entrades (%)", [10, 15, 20, 25, 30, 35, 40], default=[10, 20, 30, 40])
-sc_terms = st.sidebar.multiselect("Terminis (anys)", [10, 15, 20, 25, 30, 35], default=[15, 20, 25, 30])
+sc_terms = st.sidebar.multiselect("Terminis (anys)", [10, 15, 20, 25, 30, 35], default=[20, 25, 30])
 sc_shocks = st.sidebar.multiselect("Shocks TIN (punts %)", [0.0, 0.5, 1.0, 2.0], default=[0.0, 1.0, 2.0])
 
 # -----------------------------
@@ -381,6 +450,7 @@ with tab3:
         else:
 
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
 
 
