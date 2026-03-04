@@ -61,7 +61,7 @@ def amortization_schedule(principal: float, annual_rate_pct: float, term_years: 
     df["Any"] = ((df["Mes"] - 1) // 12) + 1
     return df
 
-def kpi_gauge(title: str, value: float, suffix: str, vmin: float, vmax: float, steps, height: int = 160):
+def kpi_gauge(title: str, value: float, suffix: str, vmin: float, vmax: float, steps, height: int = 140):
     """
     steps = [(a,b,color), ...] on a..b dins [vmin,vmax]
     """
@@ -74,7 +74,7 @@ def kpi_gauge(title: str, value: float, suffix: str, vmin: float, vmax: float, s
         show_infty = True
     else:
         display_value = max(vmin, min(float(value), vmax))
-        number = {"suffix": suffix, "font": {"size": 34}}
+        number = {"suffix": suffix, "font": {"size": 26}}
         show_infty = False
 
     fig = go.Figure(go.Indicator(
@@ -322,7 +322,8 @@ with g4:
     )
 
 st.caption(comp.conclusion)
-st.caption(comp.notes)
+st.divider()
+st.caption(comp.is_profitable)
 
 # -----------------------------
 # Tabs
@@ -428,6 +429,7 @@ with tab3:
             st.plotly_chart(fig_hm, use_container_width=True)
         else:
             st.info("No s'ha pogut generar el heatmap amb el filtre actual de TIN.")
+
 
 
 
